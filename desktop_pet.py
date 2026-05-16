@@ -69,8 +69,22 @@ class DesktopPet:
         self.menu.add_command(label="退出", command=self.close)
 
         self.place_initially()
-        self.say("我准备好啦")
+        self.say(self._startup_message())
         self.animate()
+
+    def _startup_message(self) -> str:
+        config_path = BASE_DIR / ".vibeuddy" / "config.json"
+        key_ok = False
+        if config_path.exists():
+            try:
+                config = json.loads(config_path.read_text(encoding="utf-8"))
+                if config.get("siliconflow_api_key"):
+                    key_ok = True
+            except Exception:
+                pass
+        if os.environ.get("SILICONFLOW_API_KEY"):
+            key_ok = True
+        return "我准备好啦，API已配置" if key_ok else "我准备好啦，但API未配置"
 
     def create_bubble(self) -> tk.Toplevel:
         bubble = tk.Toplevel(self.root)
@@ -221,17 +235,23 @@ class DesktopPet:
                 cwd=str(BASE_DIR),
                 env=os.environ.copy(),
             )
-            if result.returncode != 0 and result.stderr:
-                self.root.after(0, lambda: self._on_question_failed())
-                return
         except Exception:
-            self.root.after(0, lambda: self._on_question_failed())
+            self.root.after(0, lambda: self._on_question_failed("生成超时或异常"))
+            return
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "").strip()[:80]
+            self.root.after(0, lambda d=detail: self._on_question_failed(d))
+            return
+        q_path = QUESTION_LOOP_DIR / "current_question.json"
+        if not q_path.exists():
+            self.root.after(0, lambda: self._on_question_failed("问题文件未生成"))
             return
         self.root.after(0, lambda: self._show_question())
 
-    def _on_question_failed(self) -> None:
+    def _on_question_failed(self, detail: str = "") -> None:
         self._generating = False
-        self.say("我没想好问题，再试一次?")
+        msg = f"我没想好问题…({detail})" if detail else "我没想好问题，再试一次?"
+        self.say(msg)
 
     def _show_question(self) -> None:
         self._generating = False

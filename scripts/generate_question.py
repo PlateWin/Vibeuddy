@@ -109,12 +109,28 @@ SYSTEM_PROMPT = """你是 Vibeuddy，一只会陪用户 Vibe Coding 的项目思
 必须只返回 JSON，不要输出 Markdown，不要输出额外解释。"""
 
 
+def _get_api_key() -> str:
+    key = os.environ.get("SILICONFLOW_API_KEY", "")
+    if key:
+        return key
+    config_path = BASE_DIR / ".vibeuddy" / "config.json"
+    if config_path.exists():
+        try:
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+            key = config.get("siliconflow_api_key", "")
+            if key:
+                return key
+        except Exception:
+            pass
+    return ""
+
+
 def call_model(prompt: str) -> dict[str, Any]:
-    api_key = os.environ.get("SILICONFLOW_API_KEY", "")
+    api_key = _get_api_key()
     if not api_key:
         raise SystemExit(
             "Missing SILICONFLOW_API_KEY. "
-            "Please set it before running Vibeuddy question loop."
+            "Set env var or add to .vibeuddy/config.json"
         )
 
     import urllib.request
