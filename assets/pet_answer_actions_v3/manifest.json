@@ -1,0 +1,47 @@
+{
+  "pet": "cyber-kitten",
+  "source_frames": "assets/pet_frames_aligned/frame_XX.png",
+  "actions": {
+    "stand": {
+      "frames": [
+        1,
+        2,
+        5,
+        6,
+        5,
+        2
+      ],
+      "description": "Idle standing loop with light breathing and blink variation."
+    },
+    "correct": {
+      "frames": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "description": "Answer-correct loop with frame 7 using a stand-matched recovery pose to remove the return-frame jump."
+    },
+    "wrong": {
+      "frames": [
+        2,
+        3,
+        4,
+        3,
+        2,
+        1
+      ],
+      "description": "Answer-wrong loop with confused and closed-eye frames."
+    }
+  },
+  "correct_source_sheet": "assets\\Gemini_Generated_Image_lbj5g2lbj5g2lbj5.png",
+  "correct_saved_frames": 7,
+  "aliases": {
+    "idle": "stand",
+    "happy": "correct",
+    "confused": "wrong"
+  }
+}
