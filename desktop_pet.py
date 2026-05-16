@@ -4,6 +4,7 @@ import json
 import random
 import subprocess
 import sys
+import threading
 import tkinter as tk
 from pathlib import Path
 
@@ -18,7 +19,9 @@ CROP_SCRIPT = BASE_DIR / "scripts" / "crop_sprite_to_transparent.py"
 ALIGN_SCRIPT = BASE_DIR / "scripts" / "align_pet_frames.py"
 ANSWER_ACTION_SCRIPT = BASE_DIR / "scripts" / "build_answer_pet_actions.py"
 CLAUDE_EVENTS_DIR = BASE_DIR / ".vibeuddy" / "claude-listener"
+QUESTION_LOOP_DIR = BASE_DIR / ".vibeuddy" / "question-loop"
 POLL_INTERVAL_MS = 800
+GENERATE_SCRIPT = BASE_DIR / "scripts" / "generate_question.py"
 
 
 class DesktopPet:
@@ -41,7 +44,9 @@ class DesktopPet:
         self.closed = False
         self.bubble_visible = True
         self.bubble_after_id: str | None = None
-        self._last_event_at = ""
+        self._last_prompt_mtime = ""
+        self._last_result_mtime = ""
+        self._generating = False
 
         self.actions = self.load_actions()
 
@@ -76,8 +81,8 @@ class DesktopPet:
 
         self.bubble_canvas = tk.Canvas(
             bubble,
-            width=150,
-            height=60,
+            width=210,
+            height=80,
             bg="#010101",
             bd=0,
             highlightthickness=0,
@@ -85,12 +90,12 @@ class DesktopPet:
         self.bubble_canvas.pack()
         self.draw_bubble_shape()
         self.bubble_text_id = self.bubble_canvas.create_text(
-            75,
-            25,
+            105,
+            36,
             text="",
-            width=116,
+            width=176,
             fill="#1b2240",
-            font=("Microsoft YaHei UI", 9, "bold"),
+            font=("Microsoft YaHei UI", 8, "bold"),
             justify="center",
         )
         return bubble
@@ -101,32 +106,31 @@ class DesktopPet:
         outline = "#151949"
         accent = "#35dfe7"
 
-        # Pixel bubble: draw blocky stepped rectangles instead of antialiased curves.
         blocks = [
-            (24, 6, 126, 10),
-            (16, 10, 134, 16),
-            (12, 16, 138, 40),
-            (20, 40, 130, 48),
-            (62, 48, 84, 52),
-            (70, 52, 76, 58),
+            (36, 6, 174, 10),
+            (24, 10, 186, 16),
+            (18, 16, 192, 54),
+            (28, 54, 182, 64),
+            (86, 64, 124, 68),
+            (96, 68, 114, 76),
         ]
         for box in blocks:
             canvas.create_rectangle(*box, fill=outline, outline=outline)
 
         inner_blocks = [
-            (26, 10, 124, 14),
-            (18, 14, 132, 20),
-            (16, 20, 134, 38),
-            (24, 38, 126, 44),
-            (66, 44, 80, 48),
-            (72, 48, 74, 54),
+            (38, 10, 172, 14),
+            (26, 14, 184, 20),
+            (20, 20, 190, 52),
+            (30, 52, 180, 62),
+            (88, 62, 122, 66),
+            (96, 66, 114, 72),
         ]
         for box in inner_blocks:
             canvas.create_rectangle(*box, fill=fill, outline=fill)
 
-        for box in ((24, 18, 28, 22), (122, 18, 126, 22), (30, 40, 34, 44), (116, 40, 120, 44)):
+        for box in ((34, 24, 38, 28), (170, 24, 174, 28), (40, 50, 44, 54), (164, 50, 168, 54)):
             canvas.create_rectangle(*box, fill="#dfe8ff", outline="#dfe8ff")
-        for box in ((128, 24, 132, 28), (128, 32, 132, 36), (18, 26, 22, 30)):
+        for box in ((178, 34, 182, 38), (178, 44, 182, 48), (26, 36, 30, 40)):
             canvas.create_rectangle(*box, fill=accent, outline=accent)
 
     def load_numbered_frames(self, directory: Path) -> list[tk.PhotoImage]:
@@ -180,32 +184,92 @@ class DesktopPet:
         self.base_y = y
         self.root.geometry(f"+{x}+{y}")
         self.update_bubble_position()
-        self._poll_events()
+        self._poll_question_loop()
 
-    def _poll_events(self) -> None:
-        self.check_events()
+    def _poll_question_loop(self) -> None:
+        self._check_prompt()
+        self._check_result()
         if not self.closed:
-            self.root.after(POLL_INTERVAL_MS, self._poll_events)
+            self.root.after(POLL_INTERVAL_MS, self._poll_question_loop)
 
-    def check_events(self) -> None:
-        latest_path = CLAUDE_EVENTS_DIR / "latest.json"
-        if not latest_path.exists():
+    def _check_prompt(self) -> None:
+        """Detect new prompts and trigger question generation."""
+        if self._generating:
+            return
+        prompt_path = QUESTION_LOOP_DIR / "latest_prompt.json"
+        if not prompt_path.exists():
             return
         try:
-            mtime = latest_path.stat().st_mtime_ns
+            mtime = prompt_path.stat().st_mtime_ns
         except OSError:
             return
-        if self._last_event_at and mtime <= self._last_event_at:
+        if self._last_prompt_mtime and mtime <= self._last_prompt_mtime:
+            return
+        self._last_prompt_mtime = mtime
+        self._generating = True
+        self.say("让我想想...")
+        threading.Thread(target=self._generate_question, daemon=True).start()
+
+    def _generate_question(self) -> None:
+        """Run generate_question.py in background, then update UI."""
+        try:
+            result = subprocess.run(
+                [sys.executable, str(GENERATE_SCRIPT)],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                cwd=str(BASE_DIR),
+                env=os.environ.copy(),
+            )
+            if result.returncode != 0 and result.stderr:
+                self.root.after(0, lambda: self._on_question_failed())
+                return
+        except Exception:
+            self.root.after(0, lambda: self._on_question_failed())
+            return
+        self.root.after(0, lambda: self._show_question())
+
+    def _on_question_failed(self) -> None:
+        self._generating = False
+        self.say("我没想好问题，再试一次?")
+
+    def _show_question(self) -> None:
+        self._generating = False
+        q_path = QUESTION_LOOP_DIR / "current_question.json"
+        if not q_path.exists():
+            self.say("我没想好问题，再试一次?")
             return
         try:
-            data = json.loads(latest_path.read_text(encoding="utf-8"))
+            data = json.loads(q_path.read_text(encoding="utf-8"))
         except Exception:
             return
-        self._last_event_at = mtime
-        preview = data.get("prompt_preview", "")
-        text = preview.strip().split("\n")[-1][:36] if preview.strip() else ""
-        self.say(text or "收到啦！")
-        self.play_once("correct")
+        q = data.get("question", {})
+        choices = q.get("choices", [])
+        choice_text = " | ".join(f"{c['id']}.{c['text'][:8]}" for c in choices[:3])
+        bubble = f"{q.get('text', '?')} [{choice_text}]"
+        self.say(bubble)
+
+    def _check_result(self) -> None:
+        """Detect new answer results and play animation."""
+        result_path = QUESTION_LOOP_DIR / "latest_result.json"
+        if not result_path.exists():
+            return
+        try:
+            mtime = result_path.stat().st_mtime_ns
+        except OSError:
+            return
+        if self._last_result_mtime and mtime <= self._last_result_mtime:
+            return
+        self._last_result_mtime = mtime
+        try:
+            data = json.loads(result_path.read_text(encoding="utf-8"))
+        except Exception:
+            return
+        action = data.get("pet_action", "stand")
+        bubble = data.get("bubble_text", "")
+        if bubble:
+            self.say(bubble)
+        self.play_once(action)
 
     def start_drag(self, event: tk.Event) -> None:
         self.drag_x = event.x
@@ -272,8 +336,8 @@ class DesktopPet:
             return
         self.root.update_idletasks()
         pet_w = max(1, self.label.winfo_width())
-        x = self.base_x + max(0, (pet_w - 150) // 2)
-        y = max(8, self.base_y - 62)
+        x = self.base_x + max(0, (pet_w - 210) // 2)
+        y = max(8, self.base_y - 82)
         self.bubble.geometry(f"+{x}+{y}")
 
     def animate(self) -> None:

@@ -72,6 +72,22 @@ def write_event(event: dict[str, Any]) -> None:
     with events_path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(event, ensure_ascii=False) + "\n")
 
+    # Write prompt signal for question-loop
+    prompt = event.get("prompt_preview", "")
+    raw = event.get("raw", {})
+    full_prompt = raw.get("prompt") if isinstance(raw.get("prompt"), str) else prompt
+    if full_prompt.strip():
+        ql_dir = project_root() / ".vibeuddy" / "question-loop"
+        ql_dir.mkdir(parents=True, exist_ok=True)
+        prompt_signal = {
+            "received_at": event["received_at"],
+            "prompt": full_prompt.strip(),
+        }
+        (ql_dir / "latest_prompt.json").write_text(
+            json.dumps(prompt_signal, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
 
 def main() -> int:
     try:
