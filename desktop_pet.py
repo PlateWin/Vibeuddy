@@ -96,8 +96,8 @@ class DesktopPet:
 
         self.bubble_canvas = tk.Canvas(
             bubble,
-            width=210,
-            height=80,
+            width=280,
+            height=120,
             bg="#010101",
             bd=0,
             highlightthickness=0,
@@ -105,12 +105,12 @@ class DesktopPet:
         self.bubble_canvas.pack()
         self.draw_bubble_shape()
         self.bubble_text_id = self.bubble_canvas.create_text(
-            105,
-            36,
+            140,
+            50,
             text="",
-            width=176,
+            width=240,
             fill="#1b2240",
-            font=("Microsoft YaHei UI", 8, "bold"),
+            font=("Microsoft YaHei UI", 9, "bold"),
             justify="center",
         )
         return bubble
@@ -122,30 +122,30 @@ class DesktopPet:
         accent = "#35dfe7"
 
         blocks = [
-            (36, 6, 174, 10),
-            (24, 10, 186, 16),
-            (18, 16, 192, 54),
-            (28, 54, 182, 64),
-            (86, 64, 124, 68),
-            (96, 68, 114, 76),
+            (50, 8, 230, 14),
+            (34, 14, 246, 22),
+            (24, 22, 256, 76),
+            (38, 76, 242, 88),
+            (112, 88, 168, 94),
+            (124, 94, 156, 104),
         ]
         for box in blocks:
             canvas.create_rectangle(*box, fill=outline, outline=outline)
 
         inner_blocks = [
-            (38, 10, 172, 14),
-            (26, 14, 184, 20),
-            (20, 20, 190, 52),
-            (30, 52, 180, 62),
-            (88, 62, 122, 66),
-            (96, 66, 114, 72),
+            (52, 14, 228, 20),
+            (36, 20, 244, 28),
+            (28, 28, 252, 74),
+            (42, 74, 238, 86),
+            (116, 86, 164, 92),
+            (126, 92, 154, 100),
         ]
         for box in inner_blocks:
             canvas.create_rectangle(*box, fill=fill, outline=fill)
 
-        for box in ((34, 24, 38, 28), (170, 24, 174, 28), (40, 50, 44, 54), (164, 50, 168, 54)):
+        for box in ((46, 34, 50, 38), (228, 34, 232, 38), (54, 70, 58, 74), (220, 70, 224, 74)):
             canvas.create_rectangle(*box, fill="#dfe8ff", outline="#dfe8ff")
-        for box in ((178, 34, 182, 38), (178, 44, 182, 48), (26, 36, 30, 40)):
+        for box in ((238, 48, 242, 52), (238, 60, 242, 64), (38, 50, 42, 54)):
             canvas.create_rectangle(*box, fill=accent, outline=accent)
 
     def load_numbered_frames(self, directory: Path) -> list[tk.PhotoImage]:
@@ -266,8 +266,8 @@ class DesktopPet:
             return
         q = data.get("question", {})
         choices = q.get("choices", [])
-        choice_text = " | ".join(f"{c['id']}.{c['text'][:8]}" for c in choices[:3])
-        bubble = f"{q.get('text', '?')} [{choice_text}]"
+        choice_lines = "\n".join(f"  {c['id']}. {c['text']}" for c in choices[:3])
+        bubble = f"{q.get('text', '?')}\n{choice_lines}\n输入 answer_question A/B/C"
         self.say(bubble)
 
     def _check_result(self) -> None:
@@ -288,9 +288,9 @@ class DesktopPet:
             return
         action = data.get("pet_action", "stand")
         bubble = data.get("bubble_text", "")
-        if bubble:
-            self.say(bubble)
         self.play_once(action)
+        if bubble:
+            self.root.after(900, lambda b=bubble: self.say(b))
 
     def start_drag(self, event: tk.Event) -> None:
         self.drag_x = event.x
@@ -357,8 +357,8 @@ class DesktopPet:
             return
         self.root.update_idletasks()
         pet_w = max(1, self.label.winfo_width())
-        x = self.base_x + max(0, (pet_w - 210) // 2)
-        y = max(8, self.base_y - 82)
+        x = self.base_x + max(0, (pet_w - 280) // 2)
+        y = max(8, self.base_y - 122)
         self.bubble.geometry(f"+{x}+{y}")
 
     def animate(self) -> None:
