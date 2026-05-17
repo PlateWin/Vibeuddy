@@ -74,6 +74,11 @@ README:
 </RECENT_QA_HISTORY>
 
 请生成一个项目理解问题。
+题目和选项要适合桌宠气泡展示：
+- question.text 不超过 42 个中文字符。
+- 每个 choices[].text 不超过 18 个中文字符。
+- 选项只写答案本身，不要在选项里写“因为……”。
+- explanation 不超过 45 个中文字符，把原因放在 explanation 里。
 返回格式必须严格符合：
 {{
   "project_summary": "...",
@@ -106,6 +111,7 @@ SYSTEM_PROMPT = """你是 Vibeuddy，一只会陪用户 Vibe Coding 的项目思
 问题应该聚焦项目定位、功能取舍、MVP 范围、用户价值或技术风险。
 不要考察琐碎代码细节。
 不要替用户做决定，要通过问题把决策权还给用户。
+题干必须短，选项必须短。不要把解释写进选项里。
 
 必须只返回 JSON，不要输出 Markdown，不要输出额外解释。"""
 
@@ -220,20 +226,44 @@ FALLBACK_QUESTION = {
 }
 
 
+def compact_text(text: Any, max_chars: int) -> str:
+    value = str(text or "").strip()
+    for marker in ("，因为", "。因为", "；因为", ", because", ". because", "; because"):
+        if marker in value:
+            value = value.split(marker, 1)[0].strip()
+    if len(value) > max_chars:
+        return value[: max_chars - 3].rstrip() + "..."
+    return value
+
+
+def normalize_question(data: dict[str, Any]) -> dict[str, Any]:
+    question = data.get("question")
+    if not isinstance(question, dict):
+        return data
+    question["text"] = compact_text(question.get("text", ""), 42)
+    question["explanation"] = compact_text(question.get("explanation", ""), 45)
+    choices = question.get("choices")
+    if isinstance(choices, list):
+        for choice in choices:
+            if isinstance(choice, dict):
+                choice["text"] = compact_text(choice.get("text", ""), 18)
+    return data
+
+
 def write_question(data: dict[str, Any]) -> None:
     QL_DIR.mkdir(parents=True, exist_ok=True)
     question_path = QL_DIR / "current_question.json"
     tmp_path = QL_DIR / "current_question.json.tmp"
+    data = normalize_question(data)
     payload = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
-    tmp_path.write_text(payload, encoding="utf-8")
+    # On Windows, replacing a file can fail when Tk or antivirus briefly holds
+    # a handle. The desktop pet already retries JSON reads, so writing the
+    # final file directly is the most reliable handoff for this tiny payload.
+    question_path.write_text(payload, encoding="utf-8")
     try:
-        tmp_path.replace(question_path)
+        tmp_path.unlink()
     except OSError:
-        question_path.write_text(payload, encoding="utf-8")
-        try:
-            tmp_path.unlink()
-        except OSError:
-            pass
+        pass
 
 
 def log_error(message: str) -> None:

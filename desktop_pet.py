@@ -52,10 +52,10 @@ class DesktopPet:
         self._tw_text = ""
         self._tw_index = 0
         self._tw_callback: object = None
-        self.bubble_width = 320
-        self.bubble_height = 120
-        self.choice_bubble_width = 320
-        self.choice_bubble_height = 150
+        self.bubble_width = 400
+        self.bubble_height = 150
+        self.choice_bubble_width = 420
+        self.choice_bubble_height = 220
         self._choice_ids: list[str] = []
         self._question_choices: list[dict] = []
         self._answer_script = BASE_DIR / "scripts" / "answer_question.py"
@@ -121,10 +121,10 @@ class DesktopPet:
         )
         self.bubble_canvas.pack(fill="both", expand=True)
         self._draw_bubble_background()
-        tw = int(self.bubble_width * 0.86)
+        tw = int(self.bubble_width * 0.84)
         self.bubble_text_id = self.bubble_canvas.create_text(
             self.bubble_width // 2,
-            int(self.bubble_height * 0.40),
+            int(self.bubble_height * 0.42),
             text="",
             width=tw,
             fill="#1b2240",
@@ -321,9 +321,9 @@ class DesktopPet:
         self.say(msg)
 
     def _show_question(self) -> None:
-        self._generating = False
         q_path = QUESTION_LOOP_DIR / "current_question.json"
         if not q_path.exists():
+            self._generating = False
             self.say("我没想好问题，再试一次?")
             return
         try:
@@ -334,14 +334,18 @@ class DesktopPet:
         q = data.get("question", {})
         choices = q.get("choices", [])
         if not q.get("text") or len(choices) < 2:
+            self._generating = False
             self.say("问题格式有点乱，我换个问法...")
             return
+        self._generating = False
         self.say(q.get("text", "?"), on_done=lambda: self._draw_choice_buttons())
         self._question_pending = True
         self._question_choices = choices[:3]
 
     def _check_result(self) -> None:
         """Detect new answer results and play animation."""
+        if self._generating or self._question_pending or self._question_active:
+            return
         result_path = QUESTION_LOOP_DIR / "latest_result.json"
         if not result_path.exists():
             return
@@ -391,7 +395,7 @@ class DesktopPet:
         self.set_action(action)
 
     def say_for_action(self, action: str) -> None:
-        if self._question_active or self._question_pending or self._showing_result:
+        if self._generating or self._question_active or self._question_pending or self._showing_result:
             return
         text = {
             "stand": "我准备好啦",
@@ -416,16 +420,16 @@ class DesktopPet:
         return 40
 
     def _resize_bubble(self, text: str) -> None:
-        text_width = int(self.bubble_width * 0.86)
+        text_width = int(self.bubble_width * 0.84)
         needed = self._measure_text_height(text, text_width)
-        target_h = max(100, min(420, int(needed + 60)))
+        target_h = max(130, min(500, int(needed + 96)))
         if target_h == self.bubble_height:
             return
         self.bubble_height = target_h
         self.bubble_canvas.config(width=self.bubble_width, height=self.bubble_height)
         self._draw_bubble_background()
-        tw = int(self.bubble_width * 0.86)
-        text_y = 28 + (self.bubble_height - 28 - 32) // 2
+        tw = int(self.bubble_width * 0.84)
+        text_y = 34 + (self.bubble_height - 34 - 58) // 2
         self.bubble_canvas.coords(self.bubble_text_id, self.bubble_width // 2, text_y)
         self.bubble_canvas.itemconfigure(self.bubble_text_id, width=tw)
 
@@ -452,9 +456,9 @@ class DesktopPet:
         canvas = self.choice_canvas
         self._resize_choice_bubble(choices[:3])
         self._draw_choice_bubble_background()
-        btn_w = min(278, self.choice_bubble_width - 42)
+        btn_w = min(372, self.choice_bubble_width - 48)
         gap = 8
-        heights = self._choice_card_heights(choices[:3], btn_w - 44)
+        heights = self._choice_card_heights(choices[:3], btn_w - 56)
         y = 62
         left = (self.choice_bubble_width - btn_w) // 2
 
@@ -481,9 +485,9 @@ class DesktopPet:
             )
             label = canvas.create_text(
                 left + 38, y + btn_h // 2,
-                text=str(c["text"]),
+                text=self._display_choice_text(c),
                 anchor="w",
-                width=btn_w - 50,
+                width=btn_w - 62,
                 fill="#1b2240", font=("Microsoft YaHei UI", 9, "bold"),
                 tags=(tag, "choice_btn"),
             )
@@ -514,14 +518,23 @@ class DesktopPet:
     def _choice_card_heights(self, choices: list[dict], text_width: int) -> list[int]:
         heights = []
         for choice in choices:
-            text_h = self._measure_choice_text_height(str(choice.get("text", "")), text_width)
-            heights.append(max(42, min(76, text_h + 20)))
+            text_h = self._measure_choice_text_height(self._display_choice_text(choice), text_width)
+            heights.append(max(48, min(104, text_h + 24)))
         return heights
 
+    def _display_choice_text(self, choice: dict) -> str:
+        text = str(choice.get("text", "")).strip()
+        for marker in ("，因为", "。因为", "；因为", ", because", ". because", "; because"):
+            if marker in text:
+                text = text.split(marker, 1)[0].strip()
+        if len(text) > 34:
+            text = text[:33].rstrip() + "..."
+        return text
+
     def _resize_choice_bubble(self, choices: list[dict]) -> None:
-        btn_w = min(278, self.choice_bubble_width - 42)
-        heights = self._choice_card_heights(choices, btn_w - 44)
-        target_h = max(154, min(310, 78 + sum(heights) + max(0, len(choices) - 1) * 8))
+        btn_w = min(372, self.choice_bubble_width - 48)
+        heights = self._choice_card_heights(choices, btn_w - 56)
+        target_h = max(220, min(430, 78 + sum(heights) + max(0, len(choices) - 1) * 8))
         if target_h == self.choice_bubble_height:
             return
         self.choice_bubble_height = target_h
@@ -657,14 +670,17 @@ class DesktopPet:
         if self.closed or not self.bubble_visible:
             return
         self.root.update_idletasks()
+        screen_w = self.root.winfo_screenwidth()
         pet_w = max(1, self.label.winfo_width())
         x = self.base_x + max(0, (pet_w - self.bubble_width) // 2)
         stack_gap = 6 if self._question_active else 0
         choice_h = self.choice_bubble_height if self._question_active else 0
         y = max(8, self.base_y - self.bubble_height - choice_h - stack_gap - 2)
+        x = max(8, min(x, screen_w - self.bubble_width - 8))
         self.bubble.geometry(f"{self.bubble_width}x{self.bubble_height}+{x}+{y}")
         if self._question_active:
             cx = self.base_x + max(0, (pet_w - self.choice_bubble_width) // 2)
+            cx = max(8, min(cx, screen_w - self.choice_bubble_width - 8))
             cy = y + self.bubble_height + stack_gap
             self.choice_bubble.geometry(f"{self.choice_bubble_width}x{self.choice_bubble_height}+{cx}+{cy}")
 
@@ -701,7 +717,8 @@ class DesktopPet:
     def apply_motion(self) -> None:
         if self.action in {"stand", "idle"}:
             if (
-                not self._question_active
+                not self._generating
+                and not self._question_active
                 and not self._question_pending
                 and not self._showing_result
                 and random.random() < 0.018

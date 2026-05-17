@@ -3,3 +3,6 @@ __pycache__/
 .vibeuddy/claude-listener/
 .vibeuddy/question-loop/
 .vibeuddy/config.json
+.claude/settings.local.json
+reference/
+assets/pet_answer_actions_v3.zip
