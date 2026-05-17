@@ -4,6 +4,7 @@ import json
 import os
 import re
 import sys
+import time
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
@@ -157,11 +158,18 @@ def call_model(prompt: str) -> dict[str, Any]:
         },
     )
 
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            raw = json.loads(resp.read().decode("utf-8"))
-    except Exception as exc:
-        raise RuntimeError(f"API call failed: {exc}") from exc
+    last_exc: Exception | None = None
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                raw = json.loads(resp.read().decode("utf-8"))
+            break
+        except Exception as exc:
+            last_exc = exc
+            if attempt < 2:
+                time.sleep(0.8 * (attempt + 1))
+    else:
+        raise RuntimeError(f"API call failed after retries: {last_exc}") from last_exc
 
     content = raw["choices"][0]["message"]["content"]
     return extract_json(content)
@@ -215,10 +223,17 @@ FALLBACK_QUESTION = {
 def write_question(data: dict[str, Any]) -> None:
     QL_DIR.mkdir(parents=True, exist_ok=True)
     question_path = QL_DIR / "current_question.json"
-    question_path.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    tmp_path = QL_DIR / "current_question.json.tmp"
+    payload = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+    tmp_path.write_text(payload, encoding="utf-8")
+    try:
+        tmp_path.replace(question_path)
+    except OSError:
+        question_path.write_text(payload, encoding="utf-8")
+        try:
+            tmp_path.unlink()
+        except OSError:
+            pass
 
 
 def log_error(message: str) -> None:
@@ -238,11 +253,14 @@ def main() -> int:
             datetime.now(timezone.utc).isoformat(),
         )
         return 0
-    except SystemExit:
-        raise
-    except Exception:
+    except BaseException:
         log_error(traceback.format_exc())
         write_question(FALLBACK_QUESTION)
+        QL_DIR.mkdir(parents=True, exist_ok=True)
+        (QL_DIR / "last_generated_at.txt").write_text(
+            datetime.now(timezone.utc).isoformat(),
+            encoding="utf-8",
+        )
         return 0
 
 

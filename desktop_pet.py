@@ -52,12 +52,17 @@ class DesktopPet:
         self._tw_text = ""
         self._tw_index = 0
         self._tw_callback: object = None
-        self.bubble_width = 280
+        self.bubble_width = 320
         self.bubble_height = 120
+        self.choice_bubble_width = 320
+        self.choice_bubble_height = 150
         self._choice_ids: list[str] = []
         self._question_choices: list[dict] = []
         self._answer_script = BASE_DIR / "scripts" / "answer_question.py"
         self._question_active = False
+        self._question_pending = False
+        self._showing_result = False
+        self._result_after_id: str | None = None
 
         self.actions = self.load_actions()
 
@@ -70,6 +75,8 @@ class DesktopPet:
         self.label.bind("<Button-2>", lambda _event: self.play_once("wrong"))
 
         self.bubble = self.create_bubble()
+        self.choice_bubble = self.create_choice_bubble()
+        self.choice_bubble.withdraw()
 
         self.menu = tk.Menu(self.root, tearoff=False)
         self.menu.add_command(label="站立", command=lambda: self.set_action("stand"))
@@ -121,49 +128,86 @@ class DesktopPet:
             text="",
             width=tw,
             fill="#1b2240",
-            font=("Microsoft YaHei UI", 9, "bold"),
+            font=("Microsoft YaHei UI", 10, "bold"),
             justify="center",
         )
+        return bubble
+
+    def create_choice_bubble(self) -> tk.Toplevel:
+        bubble = tk.Toplevel(self.root)
+        bubble.overrideredirect(True)
+        bubble.attributes("-topmost", True)
+        bubble.attributes("-transparentcolor", "#010101")
+        bubble.configure(bg="#010101")
+
+        self.choice_canvas = tk.Canvas(
+            bubble,
+            width=self.choice_bubble_width,
+            height=self.choice_bubble_height,
+            bg="#010101",
+            bd=0,
+            highlightthickness=0,
+        )
+        self.choice_canvas.pack(fill="both", expand=True)
+        self._draw_choice_bubble_background()
         return bubble
 
     def _draw_bubble_background(self) -> None:
         canvas = self.bubble_canvas
         canvas.delete("bubble_bg")
-        w, h = self.bubble_width, self.bubble_height
-        dy = h - 120
+        W, H = self.bubble_width, self.bubble_height
         fill = "#ffffff"
         outline = "#151949"
         accent = "#35dfe7"
+        shade = "#dfe8ff"
 
-        # === middle body (stretches) ===
-        canvas.create_rectangle(24, 22, 256, 76 + dy, fill=outline, outline=outline, tags="bubble_bg")
-        canvas.create_rectangle(28, 28, 252, 74 + dy, fill=fill, outline=fill, tags="bubble_bg")
+        # Pixel speech bubble: clean body, stepped corners, small tail.
+        canvas.create_rectangle(24, 18, W - 16, H - 28, fill=outline, outline=outline, tags="bubble_bg")
+        canvas.create_rectangle(16, 26, W - 24, H - 36, fill=outline, outline=outline, tags="bubble_bg")
+        canvas.create_rectangle(28, 24, W - 28, H - 40, fill=fill, outline=fill, tags="bubble_bg")
+        canvas.create_rectangle(22, 32, W - 34, H - 44, fill=fill, outline=fill, tags="bubble_bg")
+        canvas.create_rectangle(34, 10, W - 44, 18, fill=outline, outline=outline, tags="bubble_bg")
+        canvas.create_rectangle(38, 16, W - 48, 24, fill=fill, outline=fill, tags="bubble_bg")
 
-        # === top blocks (fixed) ===
-        for box in [(50, 8, 230, 14), (34, 14, 246, 22)]:
-            canvas.create_rectangle(*box, fill=outline, outline=outline, tags="bubble_bg")
-        for box in [(52, 14, 228, 20), (36, 20, 244, 28)]:
-            canvas.create_rectangle(*box, fill=fill, outline=fill, tags="bubble_bg")
+        tail_x = W // 2
+        for box in [
+            (tail_x - 30, H - 40, tail_x + 30, H - 24, outline),
+            (tail_x - 22, H - 40, tail_x + 22, H - 28, fill),
+            (tail_x - 18, H - 24, tail_x + 18, H - 14, outline),
+            (tail_x - 12, H - 24, tail_x + 12, H - 18, fill),
+            (tail_x - 8, H - 14, tail_x + 8, H - 6, outline),
+        ]:
+            canvas.create_rectangle(*box[:4], fill=box[4], outline=box[4], tags="bubble_bg")
 
-        # === bottom blocks (shifted) ===
-        def shift(box):
-            return (box[0], box[1] + dy, box[2], box[3] + dy)
-
-        for box in [(38, 76, 242, 88), (112, 88, 168, 94), (124, 94, 156, 104)]:
-            canvas.create_rectangle(*shift(box), fill=outline, outline=outline, tags="bubble_bg")
-        for box in [(42, 74, 238, 86), (116, 86, 164, 92), (126, 92, 154, 100)]:
-            canvas.create_rectangle(*shift(box), fill=fill, outline=fill, tags="bubble_bg")
-
-        # === decorative dots ===
-        for box in [(46, 34, 50, 38), (228, 34, 232, 38)]:
-            canvas.create_rectangle(*box, fill="#dfe8ff", outline="#dfe8ff", tags="bubble_bg")
-        for box in [(54, 70, 58, 74), (220, 70, 224, 74)]:
-            canvas.create_rectangle(*shift(box), fill="#dfe8ff", outline="#dfe8ff", tags="bubble_bg")
-        for box in [(238, 48, 242, 52), (238, 60, 242, 64), (38, 50, 42, 54)]:
-            canvas.create_rectangle(*box, fill=accent, outline=accent, tags="bubble_bg")
+        canvas.create_rectangle(34, 44, 40, 50, fill=accent, outline=accent, tags="bubble_bg")
+        canvas.create_rectangle(W - 44, 44, W - 38, 50, fill=accent, outline=accent, tags="bubble_bg")
+        canvas.create_rectangle(52, 36, 58, 42, fill=shade, outline=shade, tags="bubble_bg")
 
         if hasattr(self, "bubble_text_id"):
             canvas.lift(self.bubble_text_id)
+
+    def _draw_choice_bubble_background(self) -> None:
+        canvas = self.choice_canvas
+        canvas.delete("choice_bg")
+        W, H = self.choice_bubble_width, self.choice_bubble_height
+        fill = "#ffffff"
+        outline = "#151949"
+        accent = "#35dfe7"
+        shadow = "#cbd6ff"
+
+        canvas.create_rectangle(22, 12, W - 14, H - 12, fill=outline, outline=outline, tags="choice_bg")
+        canvas.create_rectangle(14, 20, W - 22, H - 20, fill=outline, outline=outline, tags="choice_bg")
+        canvas.create_rectangle(20, 26, W - 28, H - 26, fill=fill, outline=fill, tags="choice_bg")
+        canvas.create_rectangle(28, 18, W - 36, 28, fill=fill, outline=fill, tags="choice_bg")
+        canvas.create_rectangle(28, 26, W - 36, 50, fill=outline, outline=outline, tags="choice_bg")
+        canvas.create_rectangle(34, 30, W - 42, 46, fill="#1b2240", outline="#1b2240", tags="choice_bg")
+        canvas.create_text(
+            W // 2, 38, text="选择一个答案", fill="#ffffff",
+            font=("Microsoft YaHei UI", 9, "bold"), tags="choice_bg"
+        )
+        canvas.create_rectangle(36, H - 26, W - 44, H - 20, fill=shadow, outline=shadow, tags="choice_bg")
+        canvas.create_rectangle(W - 42, 58, W - 36, 64, fill=accent, outline=accent, tags="choice_bg")
+        canvas.create_rectangle(W - 42, 72, W - 36, 78, fill=accent, outline=accent, tags="choice_bg")
 
     def load_numbered_frames(self, directory: Path) -> list[tk.PhotoImage]:
         paths = sorted(directory.glob("frame_*.png"))
@@ -254,7 +298,7 @@ class DesktopPet:
                 [sys.executable, str(GENERATE_SCRIPT)],
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=45,
                 cwd=str(BASE_DIR),
                 env=os.environ.copy(),
             )
@@ -285,13 +329,16 @@ class DesktopPet:
         try:
             data = json.loads(q_path.read_text(encoding="utf-8"))
         except Exception:
+            self.root.after(300, self._show_question)
             return
         q = data.get("question", {})
         choices = q.get("choices", [])
-        choice_lines = "\n".join(f"  {c['id']}. {c['text']}" for c in choices[:3])
-        text = f"{q.get('text', '?')}\n\n{choice_lines}"
+        if not q.get("text") or len(choices) < 2:
+            self.say("问题格式有点乱，我换个问法...")
+            return
+        self.say(q.get("text", "?"), on_done=lambda: self._draw_choice_buttons())
+        self._question_pending = True
         self._question_choices = choices[:3]
-        self.say(text, on_done=lambda: self._draw_choice_buttons())
 
     def _check_result(self) -> None:
         """Detect new answer results and play animation."""
@@ -311,9 +358,10 @@ class DesktopPet:
             return
         action = data.get("pet_action", "stand")
         bubble = data.get("bubble_text", "")
+        self._showing_result = True
         self.play_once(action)
         if bubble:
-            self.root.after(900, lambda b=bubble: self.say(b))
+            self.root.after(900, lambda b=bubble: self._show_result_message(b))
 
     def start_drag(self, event: tk.Event) -> None:
         self.drag_x = event.x
@@ -343,7 +391,7 @@ class DesktopPet:
         self.set_action(action)
 
     def say_for_action(self, action: str) -> None:
-        if self._question_active:
+        if self._question_active or self._question_pending or self._showing_result:
             return
         text = {
             "stand": "我准备好啦",
@@ -359,7 +407,7 @@ class DesktopPet:
     def _measure_text_height(self, text: str, width: int) -> int:
         tid = self.bubble_canvas.create_text(
             0, 0, text=text, width=width, anchor="nw",
-            font=("Microsoft YaHei UI", 9, "bold"),
+            font=("Microsoft YaHei UI", 10, "bold"),
         )
         bbox = self.bubble_canvas.bbox(tid)
         self.bubble_canvas.delete(tid)
@@ -383,57 +431,163 @@ class DesktopPet:
 
     def _clear_choice_buttons(self) -> None:
         for tid in self._choice_ids:
-            self.bubble_canvas.delete(tid)
+            self.choice_canvas.delete(tid)
         self._choice_ids.clear()
         self._question_choices.clear()
         self._question_active = False
+        self._question_pending = False
+        if hasattr(self, "choice_bubble"):
+            self.choice_bubble.withdraw()
 
     def _draw_choice_buttons(self) -> None:
-        self._clear_choice_buttons()
+        for tid in self._choice_ids:
+            self.choice_canvas.delete(tid)
+        self._choice_ids.clear()
         self._question_active = True
+        self._question_pending = False
         choices = self._question_choices
         if not choices:
+            self._question_active = False
             return
-        canvas = self.bubble_canvas
-        h = self.bubble_height
-        btn_w = min(220, self.bubble_width - 40)
-        btn_h = 26
-        gap = 6
-        total_h = len(choices) * (btn_h + gap) - gap
-        y0 = h - 24 - total_h
-        left = (self.bubble_width - btn_w) // 2
+        canvas = self.choice_canvas
+        self._resize_choice_bubble(choices[:3])
+        self._draw_choice_bubble_background()
+        btn_w = min(278, self.choice_bubble_width - 42)
+        gap = 8
+        heights = self._choice_card_heights(choices[:3], btn_w - 44)
+        y = 62
+        left = (self.choice_bubble_width - btn_w) // 2
 
         for i, c in enumerate(choices[:3]):
-            y = y0 + i * (btn_h + gap)
+            btn_h = heights[i]
             tag = f"choice_{c['id']}"
             rect = canvas.create_rectangle(
                 left, y, left + btn_w, y + btn_h,
-                fill="#f0f4ff", outline="#35dfe7", width=2, tags=(tag, "choice_btn"),
+                fill="#f7fbff", outline="#151949", width=2, tags=(tag, "choice_btn"),
+            )
+            inner = canvas.create_rectangle(
+                left + 4, y + 4, left + btn_w - 4, y + btn_h - 4,
+                outline="#35dfe7", width=2, tags=(tag, "choice_btn"),
+            )
+            badge = canvas.create_rectangle(
+                left + 8, y + 8, left + 30, y + 30,
+                fill="#1b2240", outline="#1b2240", tags=(tag, "choice_btn"),
+            )
+            badge_text = canvas.create_text(
+                left + 19, y + 19,
+                text=c["id"],
+                fill="#ffffff", font=("Microsoft YaHei UI", 9, "bold"),
+                tags=(tag, "choice_btn"),
             )
             label = canvas.create_text(
-                left + btn_w // 2, y + btn_h // 2,
-                text=f"{c['id']}. {c['text'][:32]}",
-                fill="#1b2240", font=("Microsoft YaHei UI", 8, "bold"),
+                left + 38, y + btn_h // 2,
+                text=str(c["text"]),
+                anchor="w",
+                width=btn_w - 50,
+                fill="#1b2240", font=("Microsoft YaHei UI", 9, "bold"),
                 tags=(tag, "choice_btn"),
             )
             canvas.tag_bind(tag, "<Button-1>", lambda e, cid=c['id']: self._on_answer_click(cid))
-            canvas.tag_bind(tag, "<Enter>", lambda e, t=tag: canvas.itemconfigure(t, fill="#d8efff"))
-            canvas.tag_bind(tag, "<Leave>", lambda e, t=tag: canvas.itemconfigure(t, fill="#f0f4ff"))
+            canvas.tag_bind(tag, "<Enter>", lambda e, r=rect: canvas.itemconfigure(r, fill="#d8efff"))
+            canvas.tag_bind(tag, "<Leave>", lambda e, r=rect: canvas.itemconfigure(r, fill="#f7fbff"))
             self._choice_ids.append(rect)
+            self._choice_ids.append(inner)
+            self._choice_ids.append(badge)
+            self._choice_ids.append(badge_text)
             self._choice_ids.append(label)
-        if hasattr(self, "bubble_text_id"):
-            canvas.lift(self.bubble_text_id)
+            y += btn_h + gap
+        if self.bubble_visible:
+            self.choice_bubble.deiconify()
+        self.update_bubble_position()
+
+    def _measure_choice_text_height(self, text: str, width: int) -> int:
+        tid = self.choice_canvas.create_text(
+            0, 0, text=text, width=width, anchor="nw",
+            font=("Microsoft YaHei UI", 9, "bold"),
+        )
+        bbox = self.choice_canvas.bbox(tid)
+        self.choice_canvas.delete(tid)
+        if bbox:
+            return bbox[3] - bbox[1]
+        return 20
+
+    def _choice_card_heights(self, choices: list[dict], text_width: int) -> list[int]:
+        heights = []
+        for choice in choices:
+            text_h = self._measure_choice_text_height(str(choice.get("text", "")), text_width)
+            heights.append(max(42, min(76, text_h + 20)))
+        return heights
+
+    def _resize_choice_bubble(self, choices: list[dict]) -> None:
+        btn_w = min(278, self.choice_bubble_width - 42)
+        heights = self._choice_card_heights(choices, btn_w - 44)
+        target_h = max(154, min(310, 78 + sum(heights) + max(0, len(choices) - 1) * 8))
+        if target_h == self.choice_bubble_height:
+            return
+        self.choice_bubble_height = target_h
+        self.choice_canvas.config(width=self.choice_bubble_width, height=self.choice_bubble_height)
 
     def _on_answer_click(self, choice_id: str) -> None:
         self._clear_choice_buttons()
+        q_path = QUESTION_LOOP_DIR / "current_question.json"
+        if not q_path.exists():
+            return
         try:
-            subprocess.run(
-                [sys.executable, str(self._answer_script), choice_id],
-                capture_output=True, text=True, timeout=10,
-                cwd=str(BASE_DIR),
-            )
+            data = json.loads(q_path.read_text(encoding="utf-8"))
         except Exception:
-            pass
+            return
+        q = data.get("question", {})
+        correct = q.get("correct_choice", "").strip().upper()
+        user = choice_id.strip().upper()
+        is_correct = user == correct
+
+        # Write result for polling fallback
+        result = {
+            "result": "correct" if is_correct else "wrong",
+            "pet_action": "correct" if is_correct else "wrong",
+            "bubble_text": f"答对啦！{q.get('explanation', '')}" if is_correct
+            else f"再想想。正确答案是 {correct}。{q.get('explanation', '')}",
+        }
+        QL_DIR = QUESTION_LOOP_DIR
+        QL_DIR.mkdir(parents=True, exist_ok=True)
+        result_path = QL_DIR / "latest_result.json"
+        result_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        if hasattr(self, "_last_result_mtime"):
+            try:
+                self._last_result_mtime = result_path.stat().st_mtime_ns
+            except OSError:
+                pass
+
+        # Immediate animation
+        self._showing_result = True
+        self.play_once("correct" if is_correct else "wrong")
+        self.root.after(900, lambda: self._show_result_message(result["bubble_text"]))
+
+        # Background: append history
+        def _append() -> None:
+            try:
+                subprocess.run(
+                    [sys.executable, str(self._answer_script), choice_id],
+                    capture_output=True, text=True, timeout=10,
+                    cwd=str(BASE_DIR),
+                )
+            except Exception:
+                pass
+        threading.Thread(target=_append, daemon=True).start()
+
+    def _show_result_message(self, text: str) -> None:
+        if self.closed:
+            return
+        if self._result_after_id:
+            self.root.after_cancel(self._result_after_id)
+            self._result_after_id = None
+        self._showing_result = True
+        self.say(text, typewriter=True)
+        self._result_after_id = self.root.after(7600, self._finish_result_message)
+
+    def _finish_result_message(self) -> None:
+        self._result_after_id = None
+        self._showing_result = False
 
     def _cancel_typewriter(self) -> None:
         if self._tw_after_id:
@@ -492,9 +646,12 @@ class DesktopPet:
         self.bubble_visible = not self.bubble_visible
         if self.bubble_visible:
             self.bubble.deiconify()
+            if self._question_active:
+                self.choice_bubble.deiconify()
             self.update_bubble_position()
         else:
             self.bubble.withdraw()
+            self.choice_bubble.withdraw()
 
     def update_bubble_position(self) -> None:
         if self.closed or not self.bubble_visible:
@@ -502,8 +659,14 @@ class DesktopPet:
         self.root.update_idletasks()
         pet_w = max(1, self.label.winfo_width())
         x = self.base_x + max(0, (pet_w - self.bubble_width) // 2)
-        y = max(8, self.base_y - self.bubble_height - 2)
+        stack_gap = 6 if self._question_active else 0
+        choice_h = self.choice_bubble_height if self._question_active else 0
+        y = max(8, self.base_y - self.bubble_height - choice_h - stack_gap - 2)
         self.bubble.geometry(f"{self.bubble_width}x{self.bubble_height}+{x}+{y}")
+        if self._question_active:
+            cx = self.base_x + max(0, (pet_w - self.choice_bubble_width) // 2)
+            cy = y + self.bubble_height + stack_gap
+            self.choice_bubble.geometry(f"{self.choice_bubble_width}x{self.choice_bubble_height}+{cx}+{cy}")
 
     def animate(self) -> None:
         if self.closed:
@@ -519,7 +682,11 @@ class DesktopPet:
         self.frame_index += 1
 
         if self.action in {"correct", "wrong", "happy", "confused"} and self.frame_index >= len(frames):
-            self.set_action("stand")
+            if self._showing_result:
+                self.action = "stand"
+                self.frame_index = 0
+            else:
+                self.set_action("stand")
 
         delay = {
             "stand": 520,
@@ -533,7 +700,12 @@ class DesktopPet:
 
     def apply_motion(self) -> None:
         if self.action in {"stand", "idle"}:
-            if not self._question_active and random.random() < 0.018:
+            if (
+                not self._question_active
+                and not self._question_pending
+                and not self._showing_result
+                and random.random() < 0.018
+            ):
                 self.set_action("wrong")
                 return
             offset = -1 if self.float_step % 2 else 1
@@ -553,6 +725,9 @@ class DesktopPet:
 
     def close(self) -> None:
         self.closed = True
+        if self._result_after_id:
+            self.root.after_cancel(self._result_after_id)
+        self.choice_bubble.destroy()
         self.bubble.destroy()
         self.root.destroy()
 

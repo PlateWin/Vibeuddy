@@ -83,10 +83,18 @@ def write_event(event: dict[str, Any]) -> None:
             "received_at": event["received_at"],
             "prompt": full_prompt.strip(),
         }
-        (ql_dir / "latest_prompt.json").write_text(
-            json.dumps(prompt_signal, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        signal_payload = json.dumps(prompt_signal, ensure_ascii=False, indent=2) + "\n"
+        signal_path = ql_dir / "latest_prompt.json"
+        signal_tmp_path = ql_dir / "latest_prompt.json.tmp"
+        signal_tmp_path.write_text(signal_payload, encoding="utf-8")
+        try:
+            signal_tmp_path.replace(signal_path)
+        except OSError:
+            signal_path.write_text(signal_payload, encoding="utf-8")
+            try:
+                signal_tmp_path.unlink()
+            except OSError:
+                pass
 
 
 def main() -> int:
