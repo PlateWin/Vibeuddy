@@ -1,6 +1,7 @@
 # Vibeuddy 是一只会陪你 Vibe Coding 的 AI 项目桌宠。
-<img width="1772" height="1476" alt="9afcd1063bce1b42d42a585ef9d8f8fd" src="https://github.com/user-attachments/assets/c5c1d1f0-7c0b-41fa-bed6-c13f9368a7fa" /># Vibeuddy
-它不是普通桌宠，也不是普通 AI 编程工具。Vibeuddy 的核心是：在 AI 帮你快速写代码时，它会主动追问“为什么要做这个功能”，把你从“点菜式提需求”拉回到真正的项目思考里。
+<img width="1772" height="1476" alt="9afcd1063bce1b42d42a585ef9d8f8fd" src="https://github.com/user-attachments/assets/c5c1d1f0-7c0b-41fa-bed6-c13f9368a7fa" />
+
+## Vibeuddy 它不是普通桌宠，也不是普通 AI 编程工具。Vibeuddy 的核心是：在 AI 帮你快速写代码时，它会主动追问“为什么要做这个功能”，把你从“点菜式提需求”拉回到真正的项目思考里。
 
 > 每一次回车，项目都会长成一只更具体的宠物。每一次追问，你都会成为更清醒的创作者。
 
