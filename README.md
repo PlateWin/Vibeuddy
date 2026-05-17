@@ -1,4 +1,6 @@
-# Vibeuddy
+<img width="1772" height="1476" alt="9afcd1063bce1b42d42a585ef9d8f8fd" src="https://github.com/user-attachments/assets/c5c1d1f0-7c0b-41fa-bed6-c13f9368a7fa" /># Vibeuddy
+
+![Uploading 9afcd1063bce1b42d42a585ef9d8f8fd.png…]()
 
 Vibeuddy 是一只会陪你 Vibe Coding 的 AI 项目桌宠。
 
