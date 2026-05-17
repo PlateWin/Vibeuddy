@@ -3,7 +3,14 @@
     "allow": [
       "Bash(git init *)",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(ls -la .vibeuddy/question-loop/)",
+      "Bash(cat .vibeuddy/question-loop/errors.log)",
+      "Bash(cat .vibeuddy/question-loop/current_question.json)",
+      "Bash(python scripts/generate_question.py)",
+      "Bash(python scripts/answer_question.py *)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('desktop_pet.py', encoding='utf-8'\\).read\\(\\)\\); print\\('Syntax OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('desktop_pet.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")"
     ]
   },
   "hooks": {
